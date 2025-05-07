@@ -3,7 +3,7 @@ import os
 import sys
 import logging
 import zipfile
-import subprocess
+import requests
 import shutil
 from pathlib import Path
 
@@ -17,41 +17,71 @@ FILE_URL = f"https://drive.google.com/uc?id={FILE_ID}"
 APP_FOLDER = "lifecheck"
 MAIN_FILE = "main.py"
 
-def install_gdown():
-    """Install gdown package if not already installed"""
+def download_with_requests(file_id, output_path):
+    """Download file from Google Drive using requests"""
     try:
-        import gdown
-        st.success("gdown already installed")
-        return True
-    except ImportError:
-        st.info("Installing gdown package...")
-        try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "gdown"])
-            st.success("gdown installed successfully")
-            return True
-        except Exception as e:
-            st.error(f"Failed to install gdown: {e}")
-            return False
-
-def download_with_gdown(url, output_path):
-    """Download file from Google Drive using gdown"""
-    try:
-        import gdown
+        # Direct download URL
+        url = f"https://drive.google.com/uc?id={file_id}&export=download"
         st.info(f"Downloading from Google Drive: {url}")
         st.info(f"This may take a while for large files...")
         
-        # Try downloading with gdown
-        output = gdown.download(url, output_path, quiet=False)
+        # First request to get cookies and confirm token for large files
+        session = requests.Session()
+        response = session.get(url, stream=True)
         
-        if output:
-            file_size = os.path.getsize(output_path)
-            st.info(f"Downloaded file size: {file_size} bytes")
-            return True
-        else:
-            st.error("Download failed")
+        # Handle large file confirmation if needed
+        if 'text/html' in response.headers.get('Content-Type', ''):
+            st.info("Large file detected, handling confirmation...")
+            
+            # Find confirmation token
+            for chunk in response.iter_content(chunk_size=4096):
+                if b'confirm=' in chunk:
+                    confirm_token = chunk.decode().split('confirm=')[1].split('&')[0]
+                    url = f"https://drive.google.com/uc?id={file_id}&export=download&confirm={confirm_token}"
+                    break
+            
+            # Second request with confirmation
+            response = session.get(url, stream=True)
+        
+        # Save the file with progress indicator
+        total_size = int(response.headers.get('content-length', 0))
+        downloaded = 0
+        progress_bar = None
+        
+        if total_size > 0:
+            progress_bar = st.progress(0)
+            st.info(f"Total file size: {total_size / (1024*1024):.2f} MB")
+        
+        with open(output_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    if progress_bar and total_size > 0:
+                        progress_bar.progress(min(downloaded / total_size, 1.0))
+        
+        file_size = os.path.getsize(output_path)
+        st.info(f"Downloaded file size: {file_size} bytes")
+        
+        # Validate file size
+        if file_size == 0:
+            st.error("Downloaded file is empty (0 bytes)")
             return False
+            
+        # Check if it looks like a ZIP file (PK header)
+        with open(output_path, 'rb') as f:
+            header = f.read(4)
+            if not header.startswith(b'PK\x03\x04'):
+                st.error("Downloaded file is not a valid ZIP archive")
+                # Show a preview of what we got instead
+                with open(output_path, 'r', errors='ignore') as f2:
+                    content_preview = f2.read(200)
+                st.error(f"File content preview: {content_preview}")
+                return False
+                
+        return True
     except Exception as e:
-        st.error(f"Error downloading with gdown: {e}")
+        st.error(f"Error downloading: {e}")
         return False
 
 def extract_zip(zip_path, extract_to="./"):
@@ -121,11 +151,6 @@ def main():
         st.title("LifeCheck - Health Assistant")
         st.warning("LifeCheck files not found. Downloading...")
         
-        # Install gdown if needed
-        if not install_gdown():
-            st.error("Failed to install required dependencies.")
-            return
-        
         # Create temporary zip file path
         temp_zip = "archive.zip"
         
@@ -134,7 +159,7 @@ def main():
             os.remove(temp_zip)
         
         # Download the zip file from Google Drive
-        success = download_with_gdown(FILE_URL, temp_zip)
+        success = download_with_requests(FILE_ID, temp_zip)
         
         if not success:
             st.error("Failed to download the zip file.")
