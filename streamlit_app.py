@@ -7,6 +7,7 @@ import requests
 import re
 import shutil
 from pathlib import Path
+import time
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -17,77 +18,111 @@ FILE_ID = "1nmgbgX8unUmGaDzphUSWCw_kLoQHk68P"
 APP_FOLDER = "lifecheck"
 MAIN_FILE = "main.py"
 
-def download_with_direct_confirmation(file_id, output_path):
-    """Directly handle Google Drive's virus scan confirmation page"""
-    try:
-        import requests
-        import re
+def try_multiple_download_methods(file_id, output_path, max_retries=3):
+    """Try multiple methods to download from Google Drive"""
+    methods = [
+        download_method_1,
+        download_method_2,
+        download_method_3
+    ]
+    
+    for i, method in enumerate(methods):
+        st.info(f"Trying download method {i+1} of {len(methods)}...")
         
-        # Initial URL
-        url = f"https://drive.google.com/uc?id={file_id}&export=download"
-        st.info(f"Downloading from Google Drive with confirmation handling: {url}")
+        # Try each method with retries
+        for attempt in range(max_retries):
+            try:
+                if method(file_id, output_path):
+                    # Validate file
+                    if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                        with open(output_path, 'rb') as f:
+                            header = f.read(4)
+                            if header.startswith(b'PK\x03\x04'):
+                                st.success(f"Successfully downloaded with method {i+1}")
+                                return True
+                            else:
+                                st.warning(f"Downloaded file is not a valid ZIP. Retrying...")
+                    else:
+                        st.warning(f"Download failed or file is empty. Retrying...")
+                
+                if attempt < max_retries - 1:
+                    time.sleep(2)  # Wait before retry
+            except Exception as e:
+                st.error(f"Error in download method {i+1}, attempt {attempt+1}: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+    
+    st.error("All download methods failed")
+    return False
+
+def download_method_1(file_id, output_path):
+    """Method 1: Direct download URL with export=download parameter"""
+    try:
+        url = f"https://drive.google.com/uc?id={file_id}&export=download&confirm=t"
+        st.info(f"Method 1: Trying direct download: {url}")
         
         # Use a session to maintain cookies
         session = requests.Session()
-        
-        # First request - will usually return the confirmation page
-        response = session.get(url)
-        
-        # Check if we got the confirmation page
-        if 'Virus scan warning' in response.text:
-            st.info("Handling virus scan warning page...")
-            
-            # Extract the confirmation token using regex
-            confirm_token = re.search(r'confirm=([0-9A-Za-z_-]+)', response.text)
-            if not confirm_token:
-                st.error("Could not find confirmation token in response")
-                st.error("Response content preview: " + response.text[:200] + "...")
-                return False
-                
-            token = confirm_token.group(1)
-            st.info(f"Found confirmation token: {token}")
-            
-            # Build the confirmed URL and download with the token
-            confirmed_url = f"https://drive.google.com/uc?id={file_id}&export=download&confirm={token}"
-            response = session.get(confirmed_url, stream=True)
-        else:
-            # If we somehow got the file directly without confirmation
-            response = session.get(url, stream=True)
-        
-        # Save the file with progress indicator
-        total_size = int(response.headers.get('content-length', 0))
-        downloaded = 0
-        progress_bar = None
-        
-        if total_size > 0:
-            progress_bar = st.progress(0)
-            st.info(f"Total file size: {total_size / (1024*1024):.2f} MB")
+        response = session.get(url, stream=True)
         
         with open(output_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
-                    downloaded += len(chunk)
-                    if progress_bar and total_size > 0:
-                        progress_bar.progress(min(downloaded / total_size, 1.0))
         
         file_size = os.path.getsize(output_path)
         st.info(f"Downloaded file size: {file_size} bytes")
-        
-        # Check if it's a valid zip file
-        with open(output_path, 'rb') as f:
-            header = f.read(4)
-            if not header.startswith(b'PK\x03\x04'):
-                st.error("Downloaded file is not a valid ZIP archive")
-                # Show a preview of what we got instead
-                with open(output_path, 'r', errors='ignore') as f2:
-                    content_preview = f2.read(200)
-                st.error(f"File content preview: {content_preview}")
-                return False
-                
-        return True
+        return file_size > 0
     except Exception as e:
-        st.error(f"Error downloading: {e}")
+        st.error(f"Method 1 error: {e}")
+        return False
+
+def download_method_2(file_id, output_path):
+    """Method 2: Using alternative URL format"""
+    try:
+        url = f"https://docs.google.com/uc?export=download&id={file_id}&confirm=t"
+        st.info(f"Method 2: Trying alternative URL: {url}")
+        
+        session = requests.Session()
+        response = session.get(url, stream=True)
+        
+        with open(output_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+        
+        file_size = os.path.getsize(output_path)
+        st.info(f"Downloaded file size: {file_size} bytes")
+        return file_size > 0
+    except Exception as e:
+        st.error(f"Method 2 error: {e}")
+        return False
+
+def download_method_3(file_id, output_path):
+    """Method 3: Two-step process with cookies"""
+    try:
+        session = requests.Session()
+        
+        # First request to get cookies
+        url = f"https://drive.google.com/uc?id={file_id}&export=download"
+        st.info(f"Method 3: Two-step download with cookies: {url}")
+        
+        response = session.get(url)
+        
+        # Now use cookies for second request with confirm parameter
+        url = f"https://drive.google.com/uc?id={file_id}&export=download&confirm=t"
+        response = session.get(url, stream=True)
+        
+        with open(output_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+        
+        file_size = os.path.getsize(output_path)
+        st.info(f"Downloaded file size: {file_size} bytes")
+        return file_size > 0
+    except Exception as e:
+        st.error(f"Method 3 error: {e}")
         return False
 
 def extract_zip(zip_path, extract_to="./"):
@@ -162,11 +197,12 @@ def main():
         if os.path.exists(temp_zip):
             os.remove(temp_zip)
         
-        # Download the zip file from Google Drive with advanced handling
-        success = download_with_direct_confirmation(FILE_ID, temp_zip)
+        # Try multiple download methods
+        success = try_multiple_download_methods(FILE_ID, temp_zip)
         
         if not success:
-            st.error("Failed to download the zip file.")
+            st.error("Failed to download the zip file after trying multiple methods.")
+            st.info("Please download the file manually and place it in the app directory.")
             return
             
         # Extract the zip file
