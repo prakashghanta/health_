@@ -26,7 +26,19 @@ def install_gdown():
     except ImportError:
         st.info("Installing gdown package...")
         try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install","--user", "gdown"])
+            # Create a local packages directory
+            os.makedirs("packages", exist_ok=True)
+            # Install to the local directory
+            subprocess.check_call([
+                sys.executable, 
+                "-m", 
+                "pip", 
+                "install", 
+                "--target=./packages", 
+                "gdown"
+            ])
+            # Add the directory to sys.path
+            sys.path.insert(0, os.path.abspath("./packages"))
             st.success("gdown installed successfully")
             return True
         except Exception as e:
