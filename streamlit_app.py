@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger("LifeCheck.Launcher")
 
 # Config - Google Drive file ID and URL
-FILE_ID = "1x0GAEmsU_4A-PMisud1dttQPzG5O0lbd"
+FILE_ID = "1-enPexyyciKarb3Xb_6fo53lQ3_L8skm"
 FILE_URL = f"https://drive.google.com/uc?id={FILE_ID}"
 APP_FOLDER = "lifecheck"
 MAIN_FILE = "main.py"
