@@ -11,7 +11,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("LifeCheck.Launcher")
 
-# Config - Google Drive file ID and URL
+# Google Drive file ID and URL
 FILE_ID = "1nmgbgX8unUmGaDzphUSWCw_kLoQHk68P"
 FILE_URL = f"https://drive.google.com/uc?id={FILE_ID}"
 APP_FOLDER = "lifecheck"
@@ -85,20 +85,20 @@ def extract_zip(zip_path, extract_to="./"):
             z.extractall(extract_to)
         st.success("Extraction complete")
         
-        # Check if extraction created the expected app folder
+        # Checking if extraction created the expected app folder
         if os.path.exists(APP_FOLDER):
             num_files = len([f for f in os.listdir(APP_FOLDER) if os.path.isfile(os.path.join(APP_FOLDER, f))])
             st.info(f"Extracted {num_files} files in {APP_FOLDER} directory")
             return True
         else:
-            # If the zip contains a folder with all contents, try to handle that
+            # If the zip contains a folder with all contents, trying to handle that
             extracted_contents = os.listdir(".")
             for item in extracted_contents:
                 if os.path.isdir(item) and item != APP_FOLDER:
-                    # Check if this directory contains the expected files
+                    # Checking if this directory contains the expected files
                     if os.path.exists(os.path.join(item, MAIN_FILE)):
                         st.info(f"Found main.py in {item} directory, renaming to {APP_FOLDER}")
-                        # If APP_FOLDER already exists as empty dir, remove it
+                        # If app_folder already exists as empty dir, remove it
                         if os.path.exists(APP_FOLDER) and not os.listdir(APP_FOLDER):
                             os.rmdir(APP_FOLDER)
                         # Rename the directory to the expected APP_FOLDER
@@ -115,7 +115,7 @@ def extract_zip(zip_path, extract_to="./"):
         st.error(f"Error extracting: {e}")
         return False
 
-# Define page config here - will be used only if files don't exist yet
+# Defining page config here
 PAGE_CONFIG = {
     "page_title": "LifeCheck - Health Assistant",
     "layout": "wide",
@@ -123,7 +123,7 @@ PAGE_CONFIG = {
 }
 
 def main():
-    # We don't set the page config here anymore - we'll wait to see if we need to
+    
     
     # Check if the app folder exists
     if not os.path.exists(APP_FOLDER) or not os.path.exists(os.path.join(APP_FOLDER, MAIN_FILE)):
@@ -133,7 +133,7 @@ def main():
         st.title("LifeCheck - Health Assistant")
         st.warning("LifeCheck files not found. Downloading...")
         
-        # Install gdown if needed
+        # Installing gdown if needed
         if not install_gdown():
             st.error("Failed to install required dependencies.")
             return
