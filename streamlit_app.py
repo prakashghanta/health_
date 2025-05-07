@@ -15,7 +15,7 @@ logger = logging.getLogger("LifeCheck.Launcher")
 FILE_ID = "1-enPexyyciKarb3Xb_6fo53lQ3_L8skm"
 FILE_URL = f"https://drive.google.com/uc?id={FILE_ID}"
 APP_FOLDER = "lifecheck"
-MAIN_FILE = "Archive.zip"
+MAIN_FILE = "archive.zip"
 
 def install_gdown():
     """Install gdown package if not already installed"""
