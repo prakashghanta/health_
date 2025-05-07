@@ -6,13 +6,12 @@ import zipfile
 import requests
 import shutil
 from pathlib import Path
-
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("LifeCheck.Launcher")
 
 # Config - Google Drive file ID and URL
-FILE_ID = "1rOPmEr6v6f81jSrcn126ZsJk9QUTJRb0"
+FILE_ID = "1nmgbgX8unUmGaDzphUSWCw_kLoQHk68P"
 FILE_URL = f"https://drive.google.com/uc?id={FILE_ID}"
 APP_FOLDER = "lifecheck"
 MAIN_FILE = "main.py"
