@@ -4,42 +4,54 @@ import sys
 import logging
 import zipfile
 import requests
+import re
 import shutil
 from pathlib import Path
+
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("LifeCheck.Launcher")
+
 # Config - Google Drive file ID and URL
 FILE_ID = "1nmgbgX8unUmGaDzphUSWCw_kLoQHk68P"
-FILE_URL = f"https://drive.google.com/uc?id={FILE_ID}"
 APP_FOLDER = "lifecheck"
 MAIN_FILE = "main.py"
 
-def download_with_requests(file_id, output_path):
-    """Download file from Google Drive using requests"""
+def download_with_direct_confirmation(file_id, output_path):
+    """Directly handle Google Drive's virus scan confirmation page"""
     try:
-        # Direct download URL
-        url = f"https://drive.google.com/uc?id={file_id}&export=download&confirm=t&confirm=t&uuid=12345&at=AHV9Fxw-lw6pT3JKbvLoxf5_LTyu:1621462952978"
-
-        st.info(f"Downloading from Google Drive: {url}")
-        st.info(f"This may take a while for large files...")
+        import requests
+        import re
         
-        # First request to get cookies and confirm token for large files
+        # Initial URL
+        url = f"https://drive.google.com/uc?id={file_id}&export=download"
+        st.info(f"Downloading from Google Drive with confirmation handling: {url}")
+        
+        # Use a session to maintain cookies
         session = requests.Session()
-        response = session.get(url, stream=True)
         
-        # Handle large file confirmation if needed
-        if 'text/html' in response.headers.get('Content-Type', ''):
-            st.info("Large file detected, handling confirmation...")
+        # First request - will usually return the confirmation page
+        response = session.get(url)
+        
+        # Check if we got the confirmation page
+        if 'Virus scan warning' in response.text:
+            st.info("Handling virus scan warning page...")
             
-            # Find confirmation token
-            for chunk in response.iter_content(chunk_size=4096):
-                if b'confirm=' in chunk:
-                    confirm_token = chunk.decode().split('confirm=')[1].split('&')[0]
-                    url = f"https://drive.google.com/uc?id={file_id}&export=download&confirm={confirm_token}"
-                    break
+            # Extract the confirmation token using regex
+            confirm_token = re.search(r'confirm=([0-9A-Za-z_-]+)', response.text)
+            if not confirm_token:
+                st.error("Could not find confirmation token in response")
+                st.error("Response content preview: " + response.text[:200] + "...")
+                return False
+                
+            token = confirm_token.group(1)
+            st.info(f"Found confirmation token: {token}")
             
-            # Second request with confirmation
+            # Build the confirmed URL and download with the token
+            confirmed_url = f"https://drive.google.com/uc?id={file_id}&export=download&confirm={token}"
+            response = session.get(confirmed_url, stream=True)
+        else:
+            # If we somehow got the file directly without confirmation
             response = session.get(url, stream=True)
         
         # Save the file with progress indicator
@@ -62,12 +74,7 @@ def download_with_requests(file_id, output_path):
         file_size = os.path.getsize(output_path)
         st.info(f"Downloaded file size: {file_size} bytes")
         
-        # Validate file size
-        if file_size == 0:
-            st.error("Downloaded file is empty (0 bytes)")
-            return False
-            
-        # Check if it looks like a ZIP file (PK header)
+        # Check if it's a valid zip file
         with open(output_path, 'rb') as f:
             header = f.read(4)
             if not header.startswith(b'PK\x03\x04'):
@@ -140,8 +147,6 @@ PAGE_CONFIG = {
 }
 
 def main():
-    # We don't set the page config here anymore - we'll wait to see if we need to
-    
     # Check if the app folder exists
     if not os.path.exists(APP_FOLDER) or not os.path.exists(os.path.join(APP_FOLDER, MAIN_FILE)):
         # Only set page config if we're showing the download page
@@ -157,8 +162,8 @@ def main():
         if os.path.exists(temp_zip):
             os.remove(temp_zip)
         
-        # Download the zip file from Google Drive
-        success = download_with_requests(FILE_ID, temp_zip)
+        # Download the zip file from Google Drive with advanced handling
+        success = download_with_direct_confirmation(FILE_ID, temp_zip)
         
         if not success:
             st.error("Failed to download the zip file.")
