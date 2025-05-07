@@ -26,7 +26,7 @@ def install_gdown():
     except ImportError:
         st.info("Installing gdown package...")
         try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "gdown"])
+            subprocess.check_call([sys.executable, "-m", "pip", "install","--user", "gdown"])
             st.success("gdown installed successfully")
             return True
         except Exception as e:
