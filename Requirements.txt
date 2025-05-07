@@ -1,8 +1,8 @@
 streamlit
-gdown
 pandas
 numpy
-scikit-learn
 matplotlib
+scikit-learn
 scipy
-seaborn
+imblearn
+gdown
