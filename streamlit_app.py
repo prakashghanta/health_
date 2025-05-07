@@ -20,7 +20,7 @@ def download_with_requests(file_id, output_path):
     """Download file from Google Drive using requests"""
     try:
         # Direct download URL
-        url = f"https://drive.google.com/uc?id={file_id}&export=download&confirm=t&uuid=12345"
+        url = f"https://drive.google.com/uc?id={file_id}&export=download&confirm=t&confirm=t&uuid=12345&at=AHV9Fxw-lw6pT3JKbvLoxf5_LTyu:1621462952978"
 
         st.info(f"Downloading from Google Drive: {url}")
         st.info(f"This may take a while for large files...")
