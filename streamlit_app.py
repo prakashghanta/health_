@@ -15,7 +15,7 @@ logger = logging.getLogger("LifeCheck.Launcher")
 FILE_ID = "1-enPexyyciKarb3Xb_6fo53lQ3_L8skm"
 FILE_URL = f"https://drive.google.com/uc?id={FILE_ID}"
 APP_FOLDER = "lifecheck"
-MAIN_FILE = "main.py"
+MAIN_FILE = "Archive.zip"
 
 def install_gdown():
     """Install gdown package if not already installed"""
@@ -127,7 +127,7 @@ def main():
             return
         
         # Create temporary zip file path
-        temp_zip = "archive.zip"
+        temp_zip = "Archive.zip"
         
         # Remove existing file if it exists
         if os.path.exists(temp_zip):
