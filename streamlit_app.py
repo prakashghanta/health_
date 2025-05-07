@@ -3,92 +3,69 @@ import os
 import sys
 import logging
 import zipfile
+import subprocess
 import shutil
-import requests
 from pathlib import Path
 
-# Quick setup for logs
+# Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("LifeCheck.Launcher")
 
-# Google Drive stuff
-FILE_ID = "1XtvofSB1_ia_RtpXBjuUP-arMD1KClnK"
+# Config - Google Drive file ID and URL
+FILE_ID = "1-enPexyyciKarb3Xb_6fo53lQ3_L8skm"
 FILE_URL = f"https://drive.google.com/uc?id={FILE_ID}"
 APP_FOLDER = "lifecheck"
 MAIN_FILE = "main.py"
 
 def install_gdown():
-    """Installs gdown package using pip"""
+    """Install gdown package if not already installed"""
     try:
-        st.info("Installing gdown package...")
-        import subprocess
-        # Use subprocess to install gdown
-        result = subprocess.run([sys.executable, "-m", "pip", "install", "gdown"], 
-                               capture_output=True, text=True, check=True)
-        st.success("Successfully installed gdown")
+        import gdown
+        st.success("gdown already installed")
         return True
-    except subprocess.CalledProcessError as e:
-        st.error(f"Failed to install gdown: {e}")
-        st.error(f"Error details: {e.stderr}")
-        return False
-    except Exception as e:
-        st.error(f"Error installing gdown: {e}")
-        return False
+    except ImportError:
+        st.info("Installing gdown package...")
+        try:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "gdown"])
+            st.success("gdown installed successfully")
+            return True
+        except Exception as e:
+            st.error(f"Failed to install gdown: {e}")
+            return False
 
-def download_from_drive(file_id, destination):
-    """Downloads a file from Google Drive using direct API without gdown"""
+def download_with_gdown(url, output_path):
+    """Download file from Google Drive using gdown"""
     try:
-        # Use a download URL that doesn't require confirmation for most files
-        url = f"https://drive.google.com/uc?id={file_id}&export=download"
+        import gdown
+        st.info(f"Downloading from Google Drive: {url}")
+        st.info(f"This may take a while for large files...")
         
-        st.info(f"Downloading from Google Drive...")
+        # Try downloading with gdown
+        output = gdown.download(url, output_path, quiet=False)
         
-        # First request to get cookies and confirm token
-        session = requests.Session()
-        response = session.get(url, stream=True)
-        
-        # Check if we got HTML (means we need confirmation for large file)
-        if 'text/html' in response.headers.get('Content-Type', ''):
-            st.info("Large file detected, handling confirmation...")
-            
-            # Try to extract the confirm token
-            for chunk in response.iter_content(chunk_size=4096):
-                if b'confirm=' in chunk:
-                    confirm_token = chunk.decode().split('confirm=')[1].split('&')[0]
-                    # Construct URL with confirmation token
-                    url = f"https://drive.google.com/uc?id={file_id}&export=download&confirm={confirm_token}"
-                    break
-            
-            # Get the actual file with confirmation
-            response = session.get(url, stream=True)
-        
-        # Save the file
-        total_size = 0
-        with open(destination, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-                    total_size += len(chunk)
-        
-        st.info(f"Downloaded {total_size} bytes")
-        return os.path.exists(destination) and os.path.getsize(destination) > 0
-        
+        if output:
+            file_size = os.path.getsize(output_path)
+            st.info(f"Downloaded file size: {file_size} bytes")
+            return True
+        else:
+            st.error("Download failed")
+            return False
     except Exception as e:
-        st.error(f"Error downloading: {e}")
+        st.error(f"Error downloading with gdown: {e}")
         return False
 
 def extract_zip(zip_path, extract_to="./"):
-    """Unzips everything to the right place"""
+    """Extract zip file to the specified directory"""
     try:
         if not os.path.exists(zip_path):
-            st.error(f"Zip file doesn't exist: {zip_path}")
+            st.error(f"Zip file does not exist: {zip_path}")
             return False
             
         file_size = os.path.getsize(zip_path)
         st.info(f"Zip file size: {file_size} bytes")
         
         if file_size == 0:
-            st.error("Zip file is empty! That's not gonna work...")
+            st.error("Zip file is empty (0 bytes)")
             return False
         
         st.info("Extracting files...")
@@ -96,37 +73,37 @@ def extract_zip(zip_path, extract_to="./"):
             z.extractall(extract_to)
         st.success("Extraction complete")
         
-        # Make sure our app folder is there
+        # Check if extraction created the expected app folder
         if os.path.exists(APP_FOLDER):
             num_files = len([f for f in os.listdir(APP_FOLDER) if os.path.isfile(os.path.join(APP_FOLDER, f))])
             st.info(f"Extracted {num_files} files in {APP_FOLDER} directory")
             return True
         else:
-            # Sometimes the zip has a different folder name than what we expect
+            # If the zip contains a folder with all contents, try to handle that
             extracted_contents = os.listdir(".")
             for item in extracted_contents:
                 if os.path.isdir(item) and item != APP_FOLDER:
-                    # See if this folder has what we need
+                    # Check if this directory contains the expected files
                     if os.path.exists(os.path.join(item, MAIN_FILE)):
-                        st.info(f"Found main.py in {item} folder, renaming to {APP_FOLDER}")
-                        # Get rid of empty folder if it exists
+                        st.info(f"Found main.py in {item} directory, renaming to {APP_FOLDER}")
+                        # If APP_FOLDER already exists as empty dir, remove it
                         if os.path.exists(APP_FOLDER) and not os.listdir(APP_FOLDER):
                             os.rmdir(APP_FOLDER)
-                        # Rename to what we need
+                        # Rename the directory to the expected APP_FOLDER
                         os.rename(item, APP_FOLDER)
                         return True
             
-            st.error(f"Can't find the {APP_FOLDER} folder after extraction")
+            st.error(f"Extraction did not create the expected {APP_FOLDER} directory")
             return False
             
     except zipfile.BadZipFile as e:
         st.error(f"Bad zip file: {e}")
         return False
     except Exception as e:
-        st.error(f"Something went wrong during extraction: {e}")
+        st.error(f"Error extracting: {e}")
         return False
 
-# Page settings for when we need to show our own UI
+# Define page config here - will be used only if files don't exist yet
 PAGE_CONFIG = {
     "page_title": "LifeCheck - Health Assistant",
     "layout": "wide",
@@ -134,48 +111,53 @@ PAGE_CONFIG = {
 }
 
 def main():
-    # We'll wait to set up the page until we know what we're doing
+    # We don't set the page config here anymore - we'll wait to see if we need to
     
-    # Check if our app is ready to go
+    # Check if the app folder exists
     if not os.path.exists(APP_FOLDER) or not os.path.exists(os.path.join(APP_FOLDER, MAIN_FILE)):
-        # We need to download stuff, so let's set up our page
+        # Only set page config if we're showing the download page
         st.set_page_config(**PAGE_CONFIG)
         
         st.title("LifeCheck - Health Assistant")
         st.warning("LifeCheck files not found. Downloading...")
         
-        # Where we'll save the zip temporarily
+        # Install gdown if needed
+        if not install_gdown():
+            st.error("Failed to install required dependencies.")
+            return
+        
+        # Create temporary zip file path
         temp_zip = "archive.zip"
         
-        # Clean up any old files
+        # Remove existing file if it exists
         if os.path.exists(temp_zip):
             os.remove(temp_zip)
         
-        # Get the zip from Google Drive
-        success = download_from_drive(FILE_ID, temp_zip)
+        # Download the zip file from Google Drive
+        success = download_with_gdown(FILE_URL, temp_zip)
         
         if not success:
-            st.error("Couldn't download the zip file. Check your internet connection?")
+            st.error("Failed to download the zip file.")
             return
             
-        # Unzip everything
+        # Extract the zip file
         success = extract_zip(temp_zip)
         
-        # Clean up after ourselves
+        # Clean up the temp zip file
         if os.path.exists(temp_zip):
             os.remove(temp_zip)
             
         if not success:
-            st.error("Something went wrong with the setup. Maybe try again?")
+            st.error("Failed to set up LifeCheck. Please try again.")
             return
             
-        st.success("Got everything downloaded!")
+        st.success("LifeCheck files downloaded successfully!")
         st.info("Starting LifeCheck app...")
         st.rerun()
     
-    # Now we can run the actual app
+    # Now that we have the files, import and run the main app
     try:
-        # Add our app folder to Python's path
+        # Add the lifecheck directory to the Python path
         if APP_FOLDER not in sys.path:
             sys.path.insert(0, APP_FOLDER)
         
@@ -185,15 +167,15 @@ def main():
         main_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(main_module)
         
-        # Run the app
+        # Run the main function
         main_module.main()
     except Exception as e:
-        # Handle that annoying page config error
+        # If we got an error, we need to set the page config for our error page
         if "set_page_config" in str(e):
-            st.warning("LifeCheck is running! Just refresh the page.")
+            st.warning("LifeCheck is running! Please refresh the page.")
             st.stop()
         else:
-            # Show an error for other problems
+            # For other errors, show an error page
             st.set_page_config(**PAGE_CONFIG)
             st.title("LifeCheck - Health Assistant")
             st.error(f"Error running LifeCheck: {e}")
@@ -201,4 +183,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
