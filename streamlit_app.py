@@ -4,125 +4,77 @@ import sys
 import logging
 import zipfile
 import requests
-import re
 import shutil
 from pathlib import Path
-import time
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("LifeCheck.Launcher")
 
-# Config - Google Drive file ID and URL
-FILE_ID = "1nmgbgX8unUmGaDzphUSWCw_kLoQHk68P"
+# Config - GitHub Release URL
+# Replace this with your actual release URL after uploading
+GITHUB_RELEASE_URL = "https://github.com/prakashghanta/health_/releases/download/V1.0/Archive.zip"
 APP_FOLDER = "lifecheck"
 MAIN_FILE = "main.py"
 
-def try_multiple_download_methods(file_id, output_path, max_retries=3):
-    """Try multiple methods to download from Google Drive"""
-    methods = [
-        download_method_1,
-        download_method_2,
-        download_method_3
-    ]
-    
-    for i, method in enumerate(methods):
-        st.info(f"Trying download method {i+1} of {len(methods)}...")
-        
-        # Try each method with retries
-        for attempt in range(max_retries):
-            try:
-                if method(file_id, output_path):
-                    # Validate file
-                    if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                        with open(output_path, 'rb') as f:
-                            header = f.read(4)
-                            if header.startswith(b'PK\x03\x04'):
-                                st.success(f"Successfully downloaded with method {i+1}")
-                                return True
-                            else:
-                                st.warning(f"Downloaded file is not a valid ZIP. Retrying...")
-                    else:
-                        st.warning(f"Download failed or file is empty. Retrying...")
-                
-                if attempt < max_retries - 1:
-                    time.sleep(2)  # Wait before retry
-            except Exception as e:
-                st.error(f"Error in download method {i+1}, attempt {attempt+1}: {e}")
-                if attempt < max_retries - 1:
-                    time.sleep(2)
-    
-    st.error("All download methods failed")
-    return False
-
-def download_method_1(file_id, output_path):
-    """Method 1: Direct download URL with export=download parameter"""
+def download_from_github(url, output_path):
+    """Download file directly from GitHub Releases"""
     try:
-        url = f"https://drive.google.com/uc?id={file_id}&export=download&confirm=t"
-        st.info(f"Method 1: Trying direct download: {url}")
+        st.info(f"Downloading from GitHub: {url}")
         
-        # Use a session to maintain cookies
+        # Use a session for better connection handling
         session = requests.Session()
-        response = session.get(url, stream=True)
         
+        # Make sure we get a proper user agent to avoid being blocked
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        
+        # Get the file with streaming enabled
+        response = session.get(url, headers=headers, stream=True)
+        
+        # Check if request was successful
+        if response.status_code != 200:
+            st.error(f"Download failed with status code: {response.status_code}")
+            return False
+            
+        # Setup progress display
+        total_size = int(response.headers.get('content-length', 0))
+        progress_bar = None
+        
+        if total_size > 0:
+            progress_bar = st.progress(0)
+            st.info(f"File size: {total_size / (1024*1024):.2f} MB")
+        
+        # Download the file with progress updates
+        downloaded = 0
         with open(output_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
+                    downloaded += len(chunk)
+                    if progress_bar and total_size > 0:
+                        progress_bar.progress(min(downloaded / total_size, 1.0))
         
         file_size = os.path.getsize(output_path)
         st.info(f"Downloaded file size: {file_size} bytes")
-        return file_size > 0
+        
+        # Verify if it's a valid ZIP file
+        if file_size > 0:
+            with open(output_path, 'rb') as f:
+                header = f.read(4)
+                if not header.startswith(b'PK\x03\x04'):
+                    st.error("Downloaded file is not a valid ZIP archive")
+                    with open(output_path, 'r', errors='ignore') as f2:
+                        content_preview = f2.read(200)
+                    st.error(f"File content preview: {content_preview}")
+                    return False
+            return True
+        else:
+            st.error("Downloaded file is empty")
+            return False
     except Exception as e:
-        st.error(f"Method 1 error: {e}")
-        return False
-
-def download_method_2(file_id, output_path):
-    """Method 2: Using alternative URL format"""
-    try:
-        url = f"https://docs.google.com/uc?export=download&id={file_id}&confirm=t"
-        st.info(f"Method 2: Trying alternative URL: {url}")
-        
-        session = requests.Session()
-        response = session.get(url, stream=True)
-        
-        with open(output_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-        
-        file_size = os.path.getsize(output_path)
-        st.info(f"Downloaded file size: {file_size} bytes")
-        return file_size > 0
-    except Exception as e:
-        st.error(f"Method 2 error: {e}")
-        return False
-
-def download_method_3(file_id, output_path):
-    """Method 3: Two-step process with cookies"""
-    try:
-        session = requests.Session()
-        
-        # First request to get cookies
-        url = f"https://drive.google.com/uc?id={file_id}&export=download"
-        st.info(f"Method 3: Two-step download with cookies: {url}")
-        
-        response = session.get(url)
-        
-        # Now use cookies for second request with confirm parameter
-        url = f"https://drive.google.com/uc?id={file_id}&export=download&confirm=t"
-        response = session.get(url, stream=True)
-        
-        with open(output_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-        
-        file_size = os.path.getsize(output_path)
-        st.info(f"Downloaded file size: {file_size} bytes")
-        return file_size > 0
-    except Exception as e:
-        st.error(f"Method 3 error: {e}")
+        st.error(f"Error downloading: {e}")
         return False
 
 def extract_zip(zip_path, extract_to="./"):
@@ -197,12 +149,12 @@ def main():
         if os.path.exists(temp_zip):
             os.remove(temp_zip)
         
-        # Try multiple download methods
-        success = try_multiple_download_methods(FILE_ID, temp_zip)
+        # Download the zip file from GitHub
+        success = download_from_github(GITHUB_RELEASE_URL, temp_zip)
         
         if not success:
-            st.error("Failed to download the zip file after trying multiple methods.")
-            st.info("Please download the file manually and place it in the app directory.")
+            st.error("Failed to download the zip file.")
+            st.info("You can manually download the file from GitHub and place it in this directory.")
             return
             
         # Extract the zip file
