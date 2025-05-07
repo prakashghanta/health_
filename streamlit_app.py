@@ -4,6 +4,7 @@ import sys
 import logging
 import zipfile
 import requests
+import subprocess
 import shutil
 from pathlib import Path
 
@@ -11,11 +12,38 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("LifeCheck.Launcher")
 
-# Config - GitHub Release URL
-# Replace this with your actual release URL after uploading
+# Config - GitHub Release URL or Google Drive file ID
+# If using GitHub Releases:
 GITHUB_RELEASE_URL = "https://github.com/prakashghanta/health_/releases/download/V1.0/Archive.zip"
+# If using Google Drive:
+FILE_ID = "1nmgbgX8unUmGaDzphUSWCw_kLoQHk68P"
+USE_GITHUB = False  # Set to True to use GitHub Releases, False to use Google Drive
+
 APP_FOLDER = "lifecheck"
 MAIN_FILE = "main.py"
+
+# List of required packages
+REQUIRED_PACKAGES = [
+    "matplotlib",
+    "numpy",
+    "pandas",
+    # Add any other packages that might be needed by LifeCheck
+]
+
+def install_dependencies():
+    """Install required dependencies"""
+    try:
+        st.info("Checking and installing required dependencies...")
+        
+        for package in REQUIRED_PACKAGES:
+            st.info(f"Installing {package}...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+            st.success(f"Successfully installed {package}")
+        
+        return True
+    except Exception as e:
+        st.error(f"Failed to install dependencies: {e}")
+        return False
 
 def download_from_github(url, output_path):
     """Download file directly from GitHub Releases"""
@@ -140,39 +168,68 @@ def main():
         st.set_page_config(**PAGE_CONFIG)
         
         st.title("LifeCheck - Health Assistant")
-        st.warning("LifeCheck files not found. Downloading...")
+        st.warning("LifeCheck files not found.")
         
-        # Create temporary zip file path
+        # Check if archive.zip is already present (manually downloaded)
         temp_zip = "archive.zip"
-        
-        # Remove existing file if it exists
         if os.path.exists(temp_zip):
-            os.remove(temp_zip)
-        
-        # Download the zip file from GitHub
-        success = download_from_github(GITHUB_RELEASE_URL, temp_zip)
-        
-        if not success:
-            st.error("Failed to download the zip file.")
-            st.info("You can manually download the file from GitHub and place it in this directory.")
+            st.info("Found existing archive.zip file. Extracting...")
+            # Extract the zip file
+            success = extract_zip(temp_zip)
+            
+            if not success:
+                st.error("Failed to extract the zip file. It might be corrupted.")
+                return
+                
+            st.success("LifeCheck files extracted successfully!")
+            st.info("Starting LifeCheck app...")
+            st.rerun()
+        else:
+            st.info("Please download the archive.zip file and place it in this directory.")
+            st.info("Alternatively, click the button below to attempt downloading it automatically.")
+            
+            if st.button("Download and Install LifeCheck"):
+                # Create temporary zip file path
+                if os.path.exists(temp_zip):
+                    os.remove(temp_zip)
+                
+                success = False
+                
+                # Download the zip file
+                if USE_GITHUB:
+                    success = download_from_github(GITHUB_RELEASE_URL, temp_zip)
+                else:
+                    st.error("Auto-download from Google Drive is not reliable. Please download the file manually.")
+                    st.info(f"Download URL: https://drive.google.com/file/d/{FILE_ID}/view?usp=sharing")
+                    return
+                
+                if not success:
+                    st.error("Failed to download the zip file.")
+                    return
+                    
+                # Extract the zip file
+                success = extract_zip(temp_zip)
+                
+                # Clean up the temp zip file
+                if os.path.exists(temp_zip):
+                    os.remove(temp_zip)
+                    
+                if not success:
+                    st.error("Failed to set up LifeCheck. Please try again.")
+                    return
+                    
+                st.success("LifeCheck files downloaded and extracted successfully!")
+                st.info("Starting LifeCheck app...")
+                st.rerun()
+                
             return
-            
-        # Extract the zip file
-        success = extract_zip(temp_zip)
-        
-        # Clean up the temp zip file
-        if os.path.exists(temp_zip):
-            os.remove(temp_zip)
-            
-        if not success:
-            st.error("Failed to set up LifeCheck. Please try again.")
-            return
-            
-        st.success("LifeCheck files downloaded successfully!")
-        st.info("Starting LifeCheck app...")
-        st.rerun()
     
-    # Now that we have the files, import and run the main app
+    # Install required dependencies before running the app
+    if not install_dependencies():
+        st.error("Failed to install required dependencies. Cannot run LifeCheck.")
+        return
+    
+    # Now that we have the files and dependencies, import and run the main app
     try:
         # Add the lifecheck directory to the Python path
         if APP_FOLDER not in sys.path:
@@ -197,6 +254,21 @@ def main():
             st.title("LifeCheck - Health Assistant")
             st.error(f"Error running LifeCheck: {e}")
             logger.error(f"Error running app: {e}")
+            
+            # Suggest possible fixes
+            if "No module named" in str(e):
+                missing_module = str(e).split("No module named ")[1].strip("'")
+                st.info(f"The error is due to a missing Python module: {missing_module}")
+                st.info(f"Try installing it manually using: pip install {missing_module}")
+                
+                if st.button(f"Install {missing_module} now"):
+                    try:
+                        subprocess.check_call([sys.executable, "-m", "pip", "install", missing_module])
+                        st.success(f"Successfully installed {missing_module}")
+                        st.info("Restarting application...")
+                        st.rerun()
+                    except Exception as install_error:
+                        st.error(f"Failed to install {missing_module}: {install_error}")
 
 if __name__ == "__main__":
     main()
